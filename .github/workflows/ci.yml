@@ -124,7 +124,7 @@ jobs:
           allow_issue_writing: false # On désactive la création d'issues automatiques
 
       # 7. Sauvegarde du rapport de sécurité
-      # Indispensable pour voir ce que ZAP a trouvé
+      # indispensable pour voir ce que ZAP a trouvé
       - name: Upload Security Reports
         if: always()
         uses: actions/upload-artifact@v4
