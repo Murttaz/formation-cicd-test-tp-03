@@ -17,7 +17,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Installation de Java 17
+      # 2. Installation de Java 21
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -47,7 +47,7 @@ jobs:
           cat app.log
           exit 1
 
-      # 6. Création du dossier pour les rapports (Bonus TP)
+      # 6. Création du dossier pour les rapports
       - name: Prepare API test reports directory
         run: mkdir -p api-test-reports
 
@@ -63,8 +63,7 @@ jobs:
             --report-html /work/api-test-reports/report.html \
             --report-json /work/api-test-reports/report.json
 
-      # 8. Sauvegarde des rapports (Bonus TP)
-      # "if: always()" permet de sauvegarder le rapport même si le test échoue
+      # 8. Sauvegarde des rapports API
       - name: Upload API Test Reports
         if: always() 
         uses: actions/upload-artifact@v4
@@ -72,23 +71,23 @@ jobs:
           name: api-test-reports
           path: api-test-reports/
       
-      # 9. Arrêt propre (Optionnel mais propre)
+      # 9. Arrêt propre
       - name: Stop Application
         if: always()
         run: pkill -f "java -jar" || true
 
-        # ========================================================
+  # ========================================================
   # JOB 2 : TESTS DE SÉCURITÉ (Non-Fonctionnels)
   # ========================================================
   security-scan:
     runs-on: ubuntu-latest
-    needs: api-tests  # Ce job attend que le précédent soit un succès
+    needs: api-tests
     steps:
-      # 1. On récupère le code (nouvelle machine = on recommence)
+      # 1. On récupère le code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Setup Java
+      # 2. Setup Java 21 (INDISPENSABLE)
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
@@ -114,17 +113,15 @@ jobs:
           done
           exit 1
 
-      # 6. Scan OWASP ZAP (Baseline Scan)
-      # C'est l'action officielle pour scanner une URL
+      # 6. Scan OWASP ZAP
       - name: OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8080'
-          fail_action: false # false = ne bloque pas la pipeline même si des failles sont trouvées (pour le TP)
-          allow_issue_writing: false # On désactive la création d'issues automatiques
+          fail_action: false
+          allow_issue_writing: false
 
-      # 7. Sauvegarde du rapport de sécurité
-      # indispensable pour voir ce que ZAP a trouvé
+      # 7. Sauvegarde du rapport de sécurité (CORRIGÉ)
       - name: Upload Security Reports
         if: always()
         uses: actions/upload-artifact@v4
