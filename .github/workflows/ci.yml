@@ -1,0 +1,136 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ========================================================
+  # JOB 1 : TESTS API (Build + Test Fonctionnel)
+  # ========================================================
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Récupération du code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Installation de Java 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Compilation (génère le .jar)
+      - name: Build Application
+        run: mvn -q clean package
+
+      # 4. Démarrage de l'application en arrière-plan
+      - name: Start Application
+        run: nohup java -jar target/formation-cicd-test-tp-03-1.0-SNAPSHOT.jar > app.log 2>&1 &
+
+      # 5. Attente que l'API soit prête (Healthcheck)
+      - name: Wait for API to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8080/health > /dev/null; then
+              echo "API is up!"
+              exit 0
+            fi
+            echo "Waiting for API..."
+            sleep 2
+          done
+          echo "API not ready after timeout"
+          cat app.log
+          exit 1
+
+      # 6. Création du dossier pour les rapports (Bonus TP)
+      - name: Prepare API test reports directory
+        run: mkdir -p api-test-reports
+
+      # 7. Exécution des tests Hurl via Docker
+      - name: Run API tests (Hurl via Docker)
+        run: |
+          docker run --rm \
+            --add-host=host.docker.internal:host-gateway \
+            -v ${{ github.workspace }}:/work \
+            ghcr.io/orange-opensource/hurl:latest \
+            --test /work/src/test/java/api \
+            --report-junit /work/api-test-reports/junit.xml \
+            --report-html /work/api-test-reports/report.html \
+            --report-json /work/api-test-reports/report.json
+
+      # 8. Sauvegarde des rapports (Bonus TP)
+      # "if: always()" permet de sauvegarder le rapport même si le test échoue
+      - name: Upload API Test Reports
+        if: always() 
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-reports
+          path: api-test-reports/
+      
+      # 9. Arrêt propre (Optionnel mais propre)
+      - name: Stop Application
+        if: always()
+        run: pkill -f "java -jar" || true
+
+        # ========================================================
+  # JOB 2 : TESTS DE SÉCURITÉ (Non-Fonctionnels)
+  # ========================================================
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: api-tests  # Ce job attend que le précédent soit un succès
+    steps:
+      # 1. On récupère le code (nouvelle machine = on recommence)
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Setup Java
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3. Build de l'app
+      - name: Build Application
+        run: mvn -q clean package
+
+      # 4. Démarrage de l'app
+      - name: Start Application
+        run: nohup java -jar target/formation-cicd-test-tp-03-1.0-SNAPSHOT.jar > app.log 2>&1 &
+
+      # 5. Attente disponibilité API
+      - name: Wait for API to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8080/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      # 6. Scan OWASP ZAP (Baseline Scan)
+      # C'est l'action officielle pour scanner une URL
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:8080'
+          fail_action: false # false = ne bloque pas la pipeline même si des failles sont trouvées (pour le TP)
+          allow_issue_writing: false # On désactive la création d'issues automatiques
+
+      # 7. Sauvegarde du rapport de sécurité
+      # Indispensable pour voir ce que ZAP a trouvé
+      - name: Upload Security Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-security-report
+          path: |
+            report_html.html
+            report_json.json
+            report_md.md
